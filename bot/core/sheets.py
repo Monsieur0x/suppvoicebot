@@ -231,6 +231,7 @@ def _execute_fill_sync(updates: list, month_num: str) -> tuple[int, list[str]]:
                     row_map[f"{parts[0].zfill(2)}.{parts[1].zfill(2)}"] = i
 
             batch = []
+            format_cells = []
             for u in month_updates:
                 name = u["name"]
                 day_z, month_z = u["date"].split(".")
@@ -246,10 +247,34 @@ def _execute_fill_sync(updates: list, month_num: str) -> tuple[int, list[str]]:
                     continue
                 col_letter = col_index_to_letter(col_index)
                 batch.append({"range": f"{col_letter}{row_index + 1}", "values": [[new_time]]})
+                format_cells.append((row_index, col_index, new_time == "Выходной"))
                 total_ok += 1
 
             if batch:
                 ws.batch_update(batch)
+                # Заливка: зелёный — рабочий день, красный — выходной
+                fmt_requests = []
+                for row, col, is_off in format_cells:
+                    bg = {"red": 1, "green": 0.8, "blue": 0.8} if is_off else {"red": 0.8, "green": 1, "blue": 0.8}
+                    fmt_requests.append({
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": ws.id,
+                                "startRowIndex": row,
+                                "endRowIndex": row + 1,
+                                "startColumnIndex": col,
+                                "endColumnIndex": col + 1,
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": bg,
+                                }
+                            },
+                            "fields": "userEnteredFormat.backgroundColor",
+                        }
+                    })
+                if fmt_requests:
+                    ws.spreadsheet.batch_update({"requests": fmt_requests})
                 invalidate_cache(mn)
                 logger.info(f"fill: {len(batch)} ячеек в {mn}")
 
